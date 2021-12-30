@@ -11,41 +11,45 @@ function madchatterSite()
     socket.send(buf + "\r\n");
   }
 
-  var songs = [
-    new TwitchSong("Serenity Painted Death", "Opeth", "Still Life"),
-    new TwitchSong("Wrathchild", "Iron Maiden")
-  ];
+  var songs = generateSongs();
   var message_cache = [];
-  var message_handlers = [
-    updateChatHandler("chatout"),
-    pingPongHandler(socketSend),
-    cacheHandler(message_cache),
-    songListHandler(songs, sendMsg),
-    songRequestHandler(songs, sendMsg),
-    songRequestQueueHandler(songs, sendMsg),
-    new TwitchMessageHandler(
-      function (tm) { return tm.cmd == "!georgify"; },
-      function (tm) { 
-        sendMsg("PowerUpL PowerUpL PowerUpL");
-        sendMsg("PowerUpR PowerUpR PowerUpR");
-      }
-    ),
-    new TwitchMessageHandler(
-      function (tm) { return tm.cmd == "!fuck"; },
-      function (tm) { 
-        sendMsg("Kreygasm ResidentSleeper");
-        sendMsg("Kreygasm ResidentSleeper");
-        sendMsg("Kreygasm ResidentSleeper");
-        sendMsg("Kreygasm ResidentSleeper");
-      }
-    )
-  ];
+  var song_requests = {};
+  var request_limit = 5;
+  function generateHandlers()
+  {
+    return [
+      updateChatHandler("chatout"),
+      pingPongHandler(socketSend),
+      cacheHandler(message_cache),
+      songListHandler(songs, sendMsg),
+      songRequestHandler(songs, sendMsg, song_requests, request_limit),
+      songRequestResetHandler(songs, sendMsg, song_requests, user),
+      songRequestClearHandler(songs, sendMsg, user),
+      songRequestQueueHandler(songs, sendMsg),
+      helpHandler(runHelpers, sendMsg),
+      new TwitchMessageHandler(
+        function (tm) { return tm.cmd == "!georgify"; },
+        function (tm) { 
+          sendMsg("PowerUpL PowerUpL PowerUpL");
+          sendMsg("PowerUpR PowerUpR PowerUpR");
+        }
+      )
+    ];
+  }
+  var message_handlers;
 
   function runHandlers(tm)
   {
     for (i in message_handlers)
     {
       message_handlers[i].handle(tm);
+    }
+  }
+  function runHelpers(tm)
+  {
+    for (i in message_handlers)
+    {
+      message_handlers[i].helper();
     }
   }
 
@@ -67,6 +71,7 @@ function madchatterSite()
       var tm = new TwitchMessage(event.data.trim());
       runHandlers(tm);
     }
+    message_handlers = generateHandlers();
   }
 
   function joinChannel()
@@ -87,6 +92,7 @@ function madchatterSite()
       socketSend("JOIN " + channel);
       current_channel = channel;
     }
+    runHelpers();
   }
 
   function sendMsg(chat)

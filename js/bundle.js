@@ -33,10 +33,11 @@ class TwitchMessage {
 }
 
 class TwitchMessageHandler { 
-  constructor(checker, handler)
+  constructor(checker, handler, helper = function(){})
   {
     this.checker = checker 
     this.handler = handler
+    this.helper = helper
   }
   handle(tm)
   {
@@ -72,14 +73,65 @@ songListHandler = function ( songs, sendMsg )
       {
         sendMsg( i.toString() + ": " + songs[i] );
       }
-    }
+    },
+    function () { return sendMsg("Use ( !sl ) for a list of available songs"); }
   )
 }
 
-songRequestHandler = function ( songs, sendMsg )
+songRequestHandler = function ( songs, sendMsg, song_requests, request_limit )
 {
   return new TwitchMessageHandler(
-    function (tm) { return tm.cmd == "!sr"; },
+    function (tm) { return tm.cmd == "!sr" && (!(tm.user in song_requests) || song_requests[tm.user].length < request_limit ) ; },
+    function (tm) 
+    {
+      if (!(tm.user in song_requests))
+      {
+        song_requests[tm.user] = [];
+      }
+      if (tm.cmd_data.length > 0)
+      {
+        i = parseInt(tm.cmd_data[0])
+        if (!isNaN(i))
+        {
+          if (i < songs.length)
+          {
+            song_requests[tm.user].push(songs[i]);
+            requests_left = request_limit - song_requests[tm.user].length;
+            songs[i].requests++;
+            return sendMsg(tm.user + " requested " + songs[i] + " ... requests left: " + requests_left.toString());
+          }
+        }
+      }
+      sendMsg("Must give a numeric index from the song list ( !sl )");
+    },
+    function () { return sendMsg("Use ( !sr <N> ) to requests a song from the song list. All accounts get " + request_limit.toString() + " requests"); }
+  )
+}
+
+songRequestResetHandler = function ( songs, sendMsg, song_requests, user )
+{
+  return new TwitchMessageHandler(
+    function (tm) { return tm.cmd == "!srr" && tm.user == user; },
+    function (tm) 
+    {
+      for (i in songs)
+      {
+        songs[i].requests = 0;
+      }
+      for (user in song_requests)
+      {
+        song_requests[user] = [];
+      }
+      sendMsg("All requests have been reset, all account requests reset");
+    },
+    function () { return sendMsg("Use ( !srr ) to reset all song requests and account requests (protected)"); }
+  )
+}
+
+songRequestClearHandler = function ( songs, sendMsg, user )
+{
+  return new TwitchMessageHandler(
+    function (tm) { return tm.cmd == "!src" && tm.user == user; },
     function (tm) 
     {
       if (tm.cmd_data.length > 0)
@@ -89,12 +141,19 @@ songRequestHandler = function ( songs, sendMsg )
         {
           if (i < songs.length)
           {
-            return songs[i].requests++;
+            songs[i].requests = 0;
+            return 0;
           }
         }
+        sendMsg("Must give a numeric index from the song list ( !sl )");
       }
-      sendMsg("Must give a numeric index from the song list ( !sl )");
-    }
+      else
+      {
+        sorted = [...songs].sort(function(a,b){ return b.requests - a.requests })
+        sorted[0].requests = 0
+      }
+    },
+    function () { return sendMsg("Use ( !src [N] ) to clear requests for a single song, no argument for top song (protected)"); }
   )
 }
 
@@ -110,7 +169,8 @@ songRequestQueueHandler = function ( songs, sendMsg )
       {
         sendMsg( sorted[i].requests + ": " + sorted[i] );
       }
-    }
+    },
+    function () { return sendMsg("Use ( !srq ) to print the current song request queue"); }
   )
 }
 
@@ -147,6 +207,25 @@ cacheHandler = function ( cache )
     }
   )
 }
+
+helpHandler = function ( helper, sendMsg )
+{
+  return new TwitchMessageHandler(
+    function (tm) { return tm.cmd == "!help"; },
+    function (tm) { return helper() },
+    function (tm) { return sendMsg("Use ( !help ) to display the command usage"); }
+  )
+} 
+function generateSongs()
+{
+  return [
+    new TwitchSong("Serenity Painted Death", "Opeth", "Still Life"),
+    new TwitchSong("Wrathchild", "Iron Maiden", "Killers"),
+    new TwitchSong("Hallowed Be Thy Name", "Iron Maiden", "Number of the Beast"),
+    new TwitchSong("Life Demise", "Unanimated", "Ancient God Of Evil"),
+    new TwitchSong("Beyond The Dark Sun", "Wintersun", "ST")
+  ];
+}
 function madchatterSite()
 {
   var url = "wss://irc-ws.chat.twitch.tv:443";
@@ -160,41 +239,45 @@ function madchatterSite()
     socket.send(buf + "\r\n");
   }
 
-  var songs = [
-    new TwitchSong("Serenity Painted Death", "Opeth", "Still Life"),
-    new TwitchSong("Wrathchild", "Iron Maiden")
-  ];
+  var songs = generateSongs();
   var message_cache = [];
-  var message_handlers = [
-    updateChatHandler("chatout"),
-    pingPongHandler(socketSend),
-    cacheHandler(message_cache),
-    songListHandler(songs, sendMsg),
-    songRequestHandler(songs, sendMsg),
-    songRequestQueueHandler(songs, sendMsg),
-    new TwitchMessageHandler(
-      function (tm) { return tm.cmd == "!georgify"; },
-      function (tm) { 
-        sendMsg("PowerUpL PowerUpL PowerUpL");
-        sendMsg("PowerUpR PowerUpR PowerUpR");
-      }
-    ),
-    new TwitchMessageHandler(
-      function (tm) { return tm.cmd == "!fuck"; },
-      function (tm) { 
-        sendMsg("Kreygasm ResidentSleeper");
-        sendMsg("Kreygasm ResidentSleeper");
-        sendMsg("Kreygasm ResidentSleeper");
-        sendMsg("Kreygasm ResidentSleeper");
-      }
-    )
-  ];
+  var song_requests = {};
+  var request_limit = 5;
+  function generateHandlers()
+  {
+    return [
+      updateChatHandler("chatout"),
+      pingPongHandler(socketSend),
+      cacheHandler(message_cache),
+      songListHandler(songs, sendMsg),
+      songRequestHandler(songs, sendMsg, song_requests, request_limit),
+      songRequestResetHandler(songs, sendMsg, song_requests, user),
+      songRequestClearHandler(songs, sendMsg, user),
+      songRequestQueueHandler(songs, sendMsg),
+      helpHandler(runHelpers, sendMsg),
+      new TwitchMessageHandler(
+        function (tm) { return tm.cmd == "!georgify"; },
+        function (tm) { 
+          sendMsg("PowerUpL PowerUpL PowerUpL");
+          sendMsg("PowerUpR PowerUpR PowerUpR");
+        }
+      )
+    ];
+  }
+  var message_handlers;
 
   function runHandlers(tm)
   {
     for (i in message_handlers)
     {
       message_handlers[i].handle(tm);
+    }
+  }
+  function runHelpers(tm)
+  {
+    for (i in message_handlers)
+    {
+      message_handlers[i].helper();
     }
   }
 
@@ -216,6 +299,7 @@ function madchatterSite()
       var tm = new TwitchMessage(event.data.trim());
       runHandlers(tm);
     }
+    message_handlers = generateHandlers();
   }
 
   function joinChannel()
@@ -236,6 +320,7 @@ function madchatterSite()
       socketSend("JOIN " + channel);
       current_channel = channel;
     }
+    runHelpers();
   }
 
   function sendMsg(chat)

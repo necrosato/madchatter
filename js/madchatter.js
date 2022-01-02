@@ -11,7 +11,12 @@ function madchatterSite()
     socket.send(buf + "\r\n");
   }
 
-  var songs = generateSongs();
+  var song_data = generateSongData();
+  var songs = [];
+  for (i in song_data)
+  {
+    songs.push(new TwitchSong(...(song_data[i])));
+  }
   var message_cache = [];
   var song_requests = {};
   var request_limit = 5;

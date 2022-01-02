@@ -4,7 +4,6 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 JSDIR="$SCRIPTDIR/js"
 JS=(
   "$JSDIR/twitchmessage.js"
-  "$JSDIR/songs.js"
   "$JSDIR/madchatter.js"
   )
 JSENTRY="$JSDIR/entry.js"

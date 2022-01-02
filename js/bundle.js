@@ -216,16 +216,6 @@ helpHandler = function ( helper, sendMsg )
     function (tm) { return sendMsg("Use ( !help ) to display the command usage"); }
   )
 } 
-function generateSongs()
-{
-  return [
-    new TwitchSong("Serenity Painted Death", "Opeth", "Still Life"),
-    new TwitchSong("Wrathchild", "Iron Maiden", "Killers"),
-    new TwitchSong("Hallowed Be Thy Name", "Iron Maiden", "Number of the Beast"),
-    new TwitchSong("Life Demise", "Unanimated", "Ancient God Of Evil"),
-    new TwitchSong("Beyond The Dark Sun", "Wintersun", "ST")
-  ];
-}
 function madchatterSite()
 {
   var url = "wss://irc-ws.chat.twitch.tv:443";
@@ -239,7 +229,12 @@ function madchatterSite()
     socket.send(buf + "\r\n");
   }
 
-  var songs = generateSongs();
+  var song_data = generateSongData();
+  var songs = [];
+  for (i in song_data)
+  {
+    songs.push(new TwitchSong(...(song_data[i])));
+  }
   var message_cache = [];
   var song_requests = {};
   var request_limit = 5;
